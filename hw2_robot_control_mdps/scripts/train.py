@@ -17,7 +17,7 @@ def parse_args():
                         help="Checkpoint every N update iterations")
     parser.add_argument("--device", type=str, default="cpu",
                         help="Torch device (cpu or cuda)")
-    return parser.parse_args()
+    return parser.parse_args()  
 
 def make_env():
     def _init():

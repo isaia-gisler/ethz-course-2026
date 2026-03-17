@@ -1,4 +1,4 @@
-# Homework 2: Robot Control and MDP
+od# Homework 2: Robot Control and MDP
 
 * **Due Date: 12.03.26 23:59 CET**
 * **Needs to be solved individually. Gradescope checks for duplicate code.**
@@ -37,9 +37,13 @@ Note that the tracking is done by purely teleporting the joint positions to the 
 
 ### Theoretical questions
 1. If you increase the width of the Lemniscate (increasing a), what issue can happen with the robot performing IK?
+  - A larger lemniscate may exceed the arm's reachable workspace, causing IK to fail or approach singularities near full extension
 2. What can happen if you change the dt parameter in IK?
+  - Increasing dt makes you move further per Jacobian/information, possibly making you overshoot and have to correct, while decreasing dt makes you move less per Jacobian/information, and you learn super slowly and may not converge in max_iters
 3. We implemented a simple numerical IK solver. What are the advantages and disadvantages compared to an analytical IK solver?
+  - Analytical solvers are fast (close-form computation) and exact, but only exist for specific kinds of robot geometries. Numerical ones (like ours) are more expensive computationally, may get stuck in local optima or singularities, but they're general
 4. What are the limits of our IK solver compared to state-of-the-art IK solvers?
+  - We ignore joint limits entirely and are stuck with whichever solution np.linalg.solve provides which depends on initialisation, so we have no way of preferring solutions further from singularities or joint limits.
 
 The theoretical questions require only short and direct answers. Each question is expected to have a 1-sentence answer.
 
@@ -129,8 +133,11 @@ A viewer window should pop up showing the robot smoothly moving between several 
 To get a feeling for the choice of the PID gains, you will analyze how their choice influences the behavior of the waypoint tracking. 
 Test different settings of the gains to be able to answer the following:
 1. If you keep increasing $K_P$, what issue arises when tracking the waypoints?
+  - Increasing K_P causes overshoot and oscillation around target waypoints, because the correction signal is too strong relative to the underlying error.
 2. How does $K_D$ mitigate the effect you saw above when increasing $K_P$?
+  - Since it measures the rate of change in the error, it's larger and negative when we approach our target quickly, meaning it counteracts the increase of K_P to an extent.
 3. In what scenarios is a non-zero $K_I$ needed for the controller to perform well?
+  - When you have persistent forces acting on the arm in a constant direction, like gravity, which can result in equilibrium points where torque force from a remaining error and the persistent force (e.g. gravity) are perfectly balanced.
 
 There is no need to show these behavior changes in the video and you can just write down your answers in the video. Or say them out loud.
 The theoretical questions require only short and direct answers. Each question is expected to have a 1-sentence answer.
