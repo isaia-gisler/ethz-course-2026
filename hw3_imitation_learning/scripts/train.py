@@ -28,9 +28,9 @@ from hw3.model import BasePolicy, build_policy
 from torch.utils.data import DataLoader, random_split
 
 # TODO: Choose your own hyperparameters!
-EPOCHS = ... 
-BATCH_SIZE = ...
-LR = ...
+EPOCHS =  1000
+BATCH_SIZE = 128
+LR = 1e-3
 VAL_SPLIT = 0.1
 
 
@@ -48,6 +48,18 @@ def train_one_epoch(
         states, action_chunks = batch
         # TODO: Implement the training step for one batch here.
         # This mostly: Get states and action_chunks onto the correct device, compute the loss, and step the optimizer.
+        
+        states = states.to(device)
+        states = states + torch.randn_like(states) * 0.07
+        action_chunks = action_chunks.to(device)
+
+        loss = model.compute_loss(states, action_chunks)
+        total_loss += loss.item()
+        n_batches += 1
+        
+        optimizer.zero_grad()
+        loss.backward()
+        optimizer.step()
 
     return total_loss / max(n_batches, 1)
 
@@ -65,6 +77,13 @@ def evaluate(
     for batch in loader:
         states, action_chunks = batch
         # TODO: Implement the evaluation step for one batch here.
+
+        states = states.to(device)
+        action_chunks = action_chunks.to(device)
+
+        loss = model.compute_loss(states, action_chunks)
+        total_loss += loss.item()
+        n_batches += 1        
 
     return total_loss / max(n_batches, 1)
 
@@ -84,7 +103,7 @@ def main() -> None:
     parser.add_argument(
         "--chunk-size",
         type=int,
-        default=16,
+        default=8,
         help="Action chunk horizon H (default: 16).",
     )
     parser.add_argument(
@@ -104,6 +123,8 @@ def main() -> None:
         "If omitted, uses the action_key attribute from the zarr metadata.",
     )
     parser.add_argument("--seed", type=int, default=42, help="Random seed.")
+    parser.add_argument("--d-model", type=int, default=None)
+    parser.add_argument("--depth", type=int, default=None)
     args = parser.parse_args()
 
     torch.manual_seed(args.seed)
@@ -111,24 +132,14 @@ def main() -> None:
     print(f"Device: {device}")
 
     # ── load data ─────────────────────────────────────────────────────
-    zarr_paths = [args.zarr]
-    if args.extra_zarr:
-        zarr_paths.extend(args.extra_zarr)
-
-    if len(zarr_paths) == 1:
-        states, actions, ep_ends = load_zarr(
-            args.zarr,
-            state_keys=args.state_keys,
-            action_keys=args.action_keys,
-        )
-    else:
-        print(f"Merging {len(zarr_paths)} zarr stores: {[str(p) for p in zarr_paths]}")
-        states, actions, ep_ends = load_and_merge_zarrs(
-            zarr_paths,
-            state_keys=args.state_keys,
-            action_keys=args.action_keys,
-        )
+    states, actions, ep_ends = load_zarr(
+        args.zarr,
+        state_keys=args.state_keys,
+        action_keys=args.action_keys,
+    )
     normalizer = Normalizer.from_data(states, actions)
+
+    zarr_paths = [args.zarr]
 
     dataset = SO100ChunkDataset(
         states,
@@ -155,19 +166,27 @@ def main() -> None:
     )
 
     # ── model ─────────────────────────────────────────────────────────
+    kwargs = {}
+    if args.d_model is not None:
+        kwargs["d_model"] = args.d_model
+    if args.depth is not None:
+        kwargs["depth"] = args.depth
+    
     model = build_policy(
         args.policy,
         state_dim=states.shape[1],
         action_dim=actions.shape[1],
-        # TODO: build with your desired specifications
+        chunk_size=args.chunk_size,
+        **kwargs,
+
     ).to(device)
 
     n_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
     print(f"Model parameters: {n_params:,}")
 
     # TODO: implement an optimizer and scheduler
-    # optimizer =
-    # scheduler =
+    optimizer = torch.optim.AdamW(model.parameters(), lr=LR, weight_decay = 1e-4)
+    scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=EPOCHS)
 
     # ── training loop ─────────────────────────────────────────────────
     best_val = float("inf")
@@ -209,6 +228,8 @@ def main() -> None:
                 {
                     "epoch": epoch,
                     "model_state_dict": model.state_dict(),
+                    "d_model": model.d_model,
+                    "depth": model.depth,
                     "optimizer_state_dict": optimizer.state_dict(),
                     "normalizer": {
                         "state_mean": normalizer.state_mean,
@@ -222,7 +243,7 @@ def main() -> None:
                     "action_keys": args.action_keys,
                     "state_dim": int(states.shape[1]),
                     "action_dim": int(actions.shape[1]),
-                    "val_loss": val_loss,
+                    "val_loss": val_loss
                 },
                 save_path,
             )
