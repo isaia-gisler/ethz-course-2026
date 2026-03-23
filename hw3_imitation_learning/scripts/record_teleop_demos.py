@@ -194,7 +194,8 @@ class BaseCv2TeleopRecorder:
             self.recording = False
 
     def run(self) -> None:
-        cv2.namedWindow(self.window_name, cv2.WINDOW_AUTOSIZE)
+        cv2.namedWindow(self.window_name, cv2.WINDOW_NORMAL)
+        cv2.setWindowProperty(self.window_name, cv2.WND_PROP_FULLSCREEN, cv2.WINDOW_FULLSCREEN)
 
         last = time.perf_counter()
         try:
